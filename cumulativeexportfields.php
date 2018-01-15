@@ -43,6 +43,7 @@ function cumulativeexportfields_civicrm_install() {
     'data_type' => "String",
     'html_type' => "Text",
     'is_active' => 1,
+    'is_view' => 1,
   ));
   civicrm_api3('CustomField', 'create', array(
     'label' => ts('Total Contributed Amount'),
@@ -51,6 +52,7 @@ function cumulativeexportfields_civicrm_install() {
     'data_type' => "String",
     'html_type' => "Text",
     'is_active' => 1,
+    'is_view' => 1,
   ));
   _cumulativeexportfields_civix_civicrm_install();
 }
@@ -132,6 +134,18 @@ function cumulativeexportfields_civicrm_alterSettingsFolders(&$metaDataFolders =
 }
 
 /**
+ * Implementation of hook_civicrm_pageRun
+ *
+ * @link http://wiki.civicrm.org/confluence/display/CRMDOC/hook_civicrm_pageRun
+ */
+function cumulativeexportfields_civicrm_pageRun(&$page) {
+  // Hide view of cumulative fields on contribution view.
+  if (get_class($page) == "CRM_Contribute_Page_Tab") {
+    CRM_Core_Resources::singleton()->addScript("cj('#cumulative_fields__').hide();");
+  }
+}
+
+/**
  * Implementation of hook_civicrm_export
  *
  * @link http://wiki.civicrm.org/confluence/display/CRMDOC/hook_civicrm_export
@@ -166,11 +180,10 @@ function cumulativeexportfields_civicrm_export(&$exportTempTable, &$headerRows, 
       ));
 
       // Retrieve annual amounts.
-      $annual = array();
-      list($annual['count'], $annual['amount'], $annual['avg']) = CRM_Contribute_BAO_Contribution::annual($cid);
+      list($count, $amount, $avg) = CRM_Contribute_BAO_Contribution::annual($cid);
 
       // Modify SQL.
-      $sql = CRM_Core_DAO::executeQuery("UPDATE {$exportTempTable} SET custom_$ytd = '{$annual['avg']}', custom_$total = '{$annual['amount']}' WHERE contribution_id = {$dao->contribution_id}"); 
+      $sql = CRM_Core_DAO::executeQuery("UPDATE {$exportTempTable} SET custom_$ytd = '{$avg}', custom_$total = '{$amount}' WHERE contribution_id = {$dao->contribution_id}"); 
     }
   }
 }
