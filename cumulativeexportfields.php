@@ -63,6 +63,27 @@ function cumulativeexportfields_civicrm_install() {
  * @link http://wiki.civicrm.org/confluence/display/CRMDOC/hook_civicrm_uninstall
  */
 function cumulativeexportfields_civicrm_uninstall() {
+  $ytd = civicrm_api3('CustomField', 'getvalue', array(
+    'name' => 'calculated_ytd',
+    'return' => 'id',
+  ));
+  $total = civicrm_api3('CustomField', 'getvalue', array(
+    'name' => 'calculated_total',
+    'return' => 'id',
+  ));
+  $group = civicrm_api3('CustomGroup', 'getvalue', array(
+    'name' => 'cumulative_fields',
+    'return' => 'id',
+  ));
+  civicrm_api3('CustomField', 'delete', array(
+    'id' => $ytd,
+  ));
+  civicrm_api3('CustomField', 'delete', array(
+    'id' => $total,
+  ));
+  civicrm_api3('CustomGroup', 'delete', array(
+    'id' => $group,
+  ));
   _cumulativeexportfields_civix_civicrm_uninstall();
 }
 
@@ -72,6 +93,14 @@ function cumulativeexportfields_civicrm_uninstall() {
  * @link http://wiki.civicrm.org/confluence/display/CRMDOC/hook_civicrm_enable
  */
 function cumulativeexportfields_civicrm_enable() {
+  $group = civicrm_api3('CustomGroup', 'getvalue', array(
+    'name' => 'cumulative_fields',
+    'return' => 'id',
+  ));
+  civicrm_api3('CustomGroup', 'create', array(
+    'id' => $group,
+    'is_active' => 1,
+  ));
   _cumulativeexportfields_civix_civicrm_enable();
 }
 
@@ -81,6 +110,14 @@ function cumulativeexportfields_civicrm_enable() {
  * @link http://wiki.civicrm.org/confluence/display/CRMDOC/hook_civicrm_disable
  */
 function cumulativeexportfields_civicrm_disable() {
+  $group = civicrm_api3('CustomGroup', 'getvalue', array(
+    'name' => 'cumulative_fields',
+    'return' => 'id',
+  ));
+  civicrm_api3('CustomGroup', 'create', array(
+    'id' => $group,
+    'is_active' => 0,
+  ));
   _cumulativeexportfields_civix_civicrm_disable();
 }
 
