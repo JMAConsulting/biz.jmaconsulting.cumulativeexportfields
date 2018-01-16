@@ -31,9 +31,7 @@ function cumulativeexportfields_civicrm_install() {
   civicrm_api3('CustomGroup', 'create', array(
     'title' => ts('Cumulative Fields'),
     'name' => 'cumulative_fields',
-    'extends' => array(
-      '0' => 'Contribution',
-    ),
+    'extends' => array(0 => 'Contribution'),
     'is_active' => 1,
   ));
   civicrm_api3('CustomField', 'create', array(
@@ -63,27 +61,19 @@ function cumulativeexportfields_civicrm_install() {
  * @link http://wiki.civicrm.org/confluence/display/CRMDOC/hook_civicrm_uninstall
  */
 function cumulativeexportfields_civicrm_uninstall() {
-  $ytd = civicrm_api3('CustomField', 'getvalue', array(
-    'name' => 'calculated_ytd',
-    'return' => 'id',
-  ));
-  $total = civicrm_api3('CustomField', 'getvalue', array(
-    'name' => 'calculated_total',
-    'return' => 'id',
-  ));
-  $group = civicrm_api3('CustomGroup', 'getvalue', array(
-    'name' => 'cumulative_fields',
-    'return' => 'id',
-  ));
-  civicrm_api3('CustomField', 'delete', array(
-    'id' => $ytd,
-  ));
-  civicrm_api3('CustomField', 'delete', array(
-    'id' => $total,
-  ));
-  civicrm_api3('CustomGroup', 'delete', array(
-    'id' => $group,
-  ));
+  $customNames = array(
+    'calculated_ytd' => 'CustomField',
+    'calculated_total' => 'CustomField',
+    'cumulative_fields' => 'CustomGroup',
+  );
+  foreach ($customNames as $name => $entity) {
+    civicrm_api3($entity, 'get', array(
+      'name' => $name,
+      "api.$entity.delete" => array(
+        'id' => '$value.id',
+      ),
+    ));
+  }
   _cumulativeexportfields_civix_civicrm_uninstall();
 }
 
@@ -93,13 +83,12 @@ function cumulativeexportfields_civicrm_uninstall() {
  * @link http://wiki.civicrm.org/confluence/display/CRMDOC/hook_civicrm_enable
  */
 function cumulativeexportfields_civicrm_enable() {
-  $group = civicrm_api3('CustomGroup', 'getvalue', array(
+  civicrm_api3('CustomGroup', 'get', array(
     'name' => 'cumulative_fields',
-    'return' => 'id',
-  ));
-  civicrm_api3('CustomGroup', 'create', array(
-    'id' => $group,
-    'is_active' => 1,
+    'api.CustomGroup.create' => array(
+      'id' => '$value.id',
+      'is_active' => 1,
+    ),
   ));
   _cumulativeexportfields_civix_civicrm_enable();
 }
@@ -110,13 +99,12 @@ function cumulativeexportfields_civicrm_enable() {
  * @link http://wiki.civicrm.org/confluence/display/CRMDOC/hook_civicrm_disable
  */
 function cumulativeexportfields_civicrm_disable() {
-  $group = civicrm_api3('CustomGroup', 'getvalue', array(
+  civicrm_api3('CustomGroup', 'get', array(
     'name' => 'cumulative_fields',
-    'return' => 'id',
-  ));
-  civicrm_api3('CustomGroup', 'create', array(
-    'id' => $group,
-    'is_active' => 0,
+    'api.CustomGroup.create' => array(
+      'id' => '$value.id',
+      'is_active' => 0,
+    ),
   ));
   _cumulativeexportfields_civix_civicrm_disable();
 }
@@ -195,32 +183,35 @@ function cumulativeexportfields_civicrm_export(&$exportTempTable, &$headerRows, 
       return;
     }
 
-    // Check if either custom fields are selected.
-    $ytd = civicrm_api3('CustomField', 'getvalue', array(
-      'name' => 'calculated_ytd',
-      'return' => 'id',
-    ));
-    $total = civicrm_api3('CustomField', 'getvalue', array(
-      'name' => 'calculated_total',
-      'return' => 'id',
-    ));
-    if (empty($sqlColumns['custom_' . $ytd]) || empty($sqlColumns['custom_' . $total])) {
+    $customFieldKeys = CRM_Core_BAO_Cache::getItem('cumulativeexportfields', 'custom field keys');
+
+    if (empty($customFieldKeys)) {
+      // Check if either custom fields are selected.
+      foreach (array('calculated_ytd', 'calculated_total') as $name) {
+        $customFieldKeys[] = 'custom_' . civicrm_api3('CustomField', 'getvalue', array(
+          'name' => $name,
+          'return' => 'id',
+        ));
+      }
+      CRM_Core_BAO_Cache::setItem($customFieldKeys, 'cumulativeexportfields', 'custom field keys');
+    }
+
+    list($ytd, $total) = $customFieldKeys;
+    if (empty($sqlColumns[$ytd]) || empty($sqlColumns[$total])) {
       return;
     }
 
-    $dao = CRM_Core_DAO::executeQuery("SELECT contribution_id FROM {$exportTempTable}");
-    while ($dao->fetch()) {
-      // Get contact ID from contribution.
-      $cid = civicrm_api3('Contribution', 'getvalue', array(
-        'id' => $dao->contribution_id,
-        'return' => 'contact_id',
-      ));
+    $result = CRM_Utils_SQL_Select::from('!tempTable')
+            ->select(array('GROUP_CONCAT(contribution_id) as contri_ids', 'cc.contact_id'))
+            ->join('cc', 'INNER JOIN civicrm_contribution cc ON cc.id = !tempTable.contribution_id ')
+            ->groupBy('cc.contact_id')
+            ->param('!tempTable', $exportTempTable)
+            ->execute()
+            ->fetchAll();
 
-      // Retrieve annual amounts.
-      list($count, $amount, $avg) = CRM_Contribute_BAO_Contribution::annual($cid);
-
-      // Modify SQL.
-      $sql = CRM_Core_DAO::executeQuery("UPDATE {$exportTempTable} SET custom_$ytd = '{$avg}', custom_$total = '{$amount}' WHERE contribution_id = {$dao->contribution_id}"); 
+    foreach ($result as $record) {
+      list($count, $amount, $avg) = CRM_Contribute_BAO_Contribution::annual($record['contact_id']);
+      CRM_Core_DAO::executeQuery("UPDATE {$exportTempTable} SET $ytd = '{$avg}', $total = '{$amount}' WHERE contribution_id IN ( " . $record['contri_ids'] . ")");
     }
   }
 }
