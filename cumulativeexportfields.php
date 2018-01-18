@@ -209,9 +209,110 @@ function cumulativeexportfields_civicrm_export(&$exportTempTable, &$headerRows, 
             ->execute()
             ->fetchAll();
 
+    $contactIDs = CRM_Utils_Array::collect('contact_id', $result);
+    $records = _getAnnual($contactIDs);
     foreach ($result as $record) {
-      list($count, $amount, $avg) = CRM_Contribute_BAO_Contribution::annual($record['contact_id']);
-      CRM_Core_DAO::executeQuery("UPDATE {$exportTempTable} SET $ytd = '{$avg}', $total = '{$amount}' WHERE contribution_id IN ( " . $record['contri_ids'] . ")");
+      if (!empty($record['contact_id'])) {
+        $sql = sprintf("UPDATE %s SET %s = '%s', %s = '%s' WHERE contribution_id IN ( %s )",
+          $exportTempTable,
+          $ytd, $records[$record['contact_id']]['avg'],
+          $total, $records[$record['contact_id']]['amount'],
+          $record['contri_ids']
+        );
+        CRM_Core_DAO::executeQuery($sql);
+      }
     }
   }
+}
+
+
+/**
+ * @param array $contactIDs
+ *
+ * @return array
+ */
+function _getAnnual($contactIDs) {
+  $contactIDs = implode(',', $contactIDs);
+
+  $config = CRM_Core_Config::singleton();
+  $startDate = $endDate = NULL;
+
+  $currentMonth = date('m');
+  $currentDay = date('d');
+  if ((int ) $config->fiscalYearStart['M'] > $currentMonth ||
+    ((int ) $config->fiscalYearStart['M'] == $currentMonth &&
+      (int ) $config->fiscalYearStart['d'] > $currentDay
+    )
+  ) {
+    $year = date('Y') - 1;
+  }
+  else {
+    $year = date('Y');
+  }
+  $nextYear = $year + 1;
+
+  if ($config->fiscalYearStart) {
+    $newFiscalYearStart = $config->fiscalYearStart;
+    if ($newFiscalYearStart['M'] < 10) {
+      $newFiscalYearStart['M'] = '0' . $newFiscalYearStart['M'];
+    }
+    if ($newFiscalYearStart['d'] < 10) {
+      $newFiscalYearStart['d'] = '0' . $newFiscalYearStart['d'];
+    }
+    $config->fiscalYearStart = $newFiscalYearStart;
+    $monthDay = $config->fiscalYearStart['M'] . $config->fiscalYearStart['d'];
+  }
+  else {
+    $monthDay = '0101';
+  }
+  $startDate = "$year$monthDay";
+  $endDate = "$nextYear$monthDay";
+  CRM_Financial_BAO_FinancialType::getAvailableFinancialTypes($financialTypes);
+  $additionalWhere = " AND b.financial_type_id IN (0)";
+  $liWhere = " AND i.financial_type_id IN (0)";
+  if (!empty($financialTypes)) {
+    $additionalWhere = " AND b.financial_type_id IN (" . implode(',', array_keys($financialTypes)) . ") AND i.id IS NULL";
+    $liWhere = " AND i.financial_type_id NOT IN (" . implode(',', array_keys($financialTypes)) . ")";
+  }
+  $query = "
+    SELECT b.contact_id as cid,
+           count(*) as count,
+           sum(total_amount) as amount,
+           avg(total_amount) as average,
+           currency
+      FROM civicrm_contribution b
+      LEFT JOIN civicrm_line_item i ON i.contribution_id = b.id AND i.entity_table = 'civicrm_contribution' $liWhere
+     WHERE b.contact_id IN ( $contactIDs )
+       AND b.contribution_status_id = 1
+       AND b.is_test = 0
+       AND b.receive_date >= $startDate
+       AND b.receive_date <  $endDate
+    $additionalWhere
+    GROUP BY b.contact_id, currency
+    ";
+  $dao = CRM_Core_DAO::executeQuery($query);
+  $count = 0;
+  $records = array();
+  while ($dao->fetch()) {
+    if ($dao->count > 0) {
+      if (!empty($records[$dao->cid])) {
+        $records[$dao->cid]['amount'] .= ', ' . CRM_Utils_Money::format($dao->amount, $dao->currency);
+        $records[$dao->cid]['avg'] .= ', ' . CRM_Utils_Money::format($dao->average, $dao->currency);
+      }
+      else {
+        $records[$dao->cid] = array(
+          'amount' => CRM_Utils_Money::format($dao->amount, $dao->currency),
+          'avg' => CRM_Utils_Money::format($dao->average, $dao->currency),
+        );
+      }
+    }
+    else {
+      $records[$dao->cid] = array(
+        'amount' => '',
+        'avg' => '',
+      );
+    }
+  }
+
+  return $records;
 }
