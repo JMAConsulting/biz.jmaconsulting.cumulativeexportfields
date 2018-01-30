@@ -215,8 +215,8 @@ function cumulativeexportfields_civicrm_export(&$exportTempTable, &$headerRows, 
       if (!empty($record['contact_id'])) {
         $sql = sprintf("UPDATE %s SET %s = '%s', %s = '%s' WHERE contribution_id IN ( %s )",
           $exportTempTable,
-          $ytd, $records[$record['contact_id']]['avg'],
-          $total, $records[$record['contact_id']]['amount'],
+          $ytd, $records[$record['contact_id']]['ytd'],
+          $total, $records[$record['contact_id']]['total'],
           $record['contri_ids']
         );
         CRM_Core_DAO::executeQuery($sql);
@@ -277,8 +277,8 @@ function _getAnnual($contactIDs) {
   $query = "
     SELECT b.contact_id as cid,
            count(*) as count,
-           sum(total_amount) as amount,
-           avg(total_amount) as average,
+           sum(total_amount) as ytd,
+           (SELECT sum(total_amount) FROM civicrm_contribution WHERE contact_id = b.contact_id) as total,
            currency
       FROM civicrm_contribution b
       LEFT JOIN civicrm_line_item i ON i.contribution_id = b.id AND i.entity_table = 'civicrm_contribution' $liWhere
@@ -296,20 +296,20 @@ function _getAnnual($contactIDs) {
   while ($dao->fetch()) {
     if ($dao->count > 0) {
       if (!empty($records[$dao->cid])) {
-        $records[$dao->cid]['amount'] .= ', ' . CRM_Utils_Money::format($dao->amount, $dao->currency);
-        $records[$dao->cid]['avg'] .= ', ' . CRM_Utils_Money::format($dao->average, $dao->currency);
+        $records[$dao->cid]['ytd'] .= ', ' . CRM_Utils_Money::format($dao->ytd, $dao->currency);
+        $records[$dao->cid]['total'] .= ', ' . CRM_Utils_Money::format($dao->total, $dao->currency);
       }
       else {
         $records[$dao->cid] = array(
-          'amount' => CRM_Utils_Money::format($dao->amount, $dao->currency),
-          'avg' => CRM_Utils_Money::format($dao->average, $dao->currency),
+          'ytd' => CRM_Utils_Money::format($dao->ytd, $dao->currency),
+          'total' => CRM_Utils_Money::format($dao->total, $dao->currency),
         );
       }
     }
     else {
       $records[$dao->cid] = array(
-        'amount' => '',
-        'avg' => '',
+        'ytd' => '',
+        'total' => '',
       );
     }
   }
