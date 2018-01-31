@@ -278,8 +278,8 @@ function _getAnnual($contactIDs) {
     SELECT b.contact_id as cid,
            count(*) as count,
            sum(total_amount) as ytd,
-           (SELECT sum(total_amount) FROM civicrm_contribution WHERE contact_id = b.contact_id) as total,
-           currency
+           (SELECT sum(total_amount) FROM civicrm_contribution WHERE contact_id = b.contact_id AND currency = b.currency) as total,
+           b.currency
       FROM civicrm_contribution b
       LEFT JOIN civicrm_line_item i ON i.contribution_id = b.id AND i.entity_table = 'civicrm_contribution' $liWhere
      WHERE b.contact_id IN ( $contactIDs )
