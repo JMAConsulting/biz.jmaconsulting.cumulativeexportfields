@@ -159,6 +159,21 @@ function cumulativeexportfields_civicrm_alterSettingsFolders(&$metaDataFolders =
 }
 
 /**
+ * Implements hook_civicrm_container().
+ */
+function cumulativeexportfields_civicrm_container(\Symfony\Component\DependencyInjection\ContainerBuilder $container) {
+  $container->setDefinition("cache.cumulativeexportfields", new Symfony\Component\DependencyInjection\Definition(
+    'CRM_Utils_Cache_Interface',
+    [
+      [
+        'name' => 'cumulativeexportfields',
+        'type' => ['*memory*', 'SqlGroup', 'ArrayCache'],
+      ],
+    ]
+  ))->setFactory('CRM_Utils_Cache::create');
+}
+
+/**
  * Implementation of hook_civicrm_pageRun
  *
  * @link http://wiki.civicrm.org/confluence/display/CRMDOC/hook_civicrm_pageRun
@@ -183,7 +198,7 @@ function cumulativeexportfields_civicrm_export(&$exportTempTable, &$headerRows, 
       return;
     }
 
-    $customFieldKeys = CRM_Core_BAO_Cache::getItem('cumulativeexportfields', 'custom field keys');
+    $customFieldKeys = Civi::cache('cumulativeexportfields')->get('customFieldKeys');
 
     if (empty($customFieldKeys)) {
       // Check if either custom fields are selected.
@@ -193,7 +208,7 @@ function cumulativeexportfields_civicrm_export(&$exportTempTable, &$headerRows, 
           'return' => 'id',
         ));
       }
-      CRM_Core_BAO_Cache::setItem($customFieldKeys, 'cumulativeexportfields', 'custom field keys');
+      Civi::cache('cumulativeexportfields')->set('customFieldKeys', $customFieldKeys);
     }
 
     list($ytd, $total) = $customFieldKeys;
