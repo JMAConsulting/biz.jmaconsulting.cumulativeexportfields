@@ -23,5 +23,9 @@
   <comments>This is a stable module.</comments>
   <civix>
     <namespace>CRM/CEF</namespace>
+    <format>23.02.1</format>
   </civix>
+  <classloader>
+    <psr4 prefix="Civi\" path="Civi"/>
+  </classloader>
 </extension>
